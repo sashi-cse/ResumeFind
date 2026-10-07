@@ -206,6 +206,51 @@ const sampleCandidates = [
     department: 'AI & Data Science',
     skills: ['python', 'machine learning', 'sql', 'fastapi', 'docker'],
     resumeFileName: '22AI015_Resume.pdf'
+  },
+  {
+    rollNumber: '21CS088',
+    name: 'Sneha Kulkarni',
+    email: 'sneha.k@college.edu',
+    phone: '+91 98333 44556',
+    department: 'Computer Science',
+    skills: ['java', 'spring boot', 'mysql', 'microservices', 'docker'],
+    resumeFileName: '21CS088_Resume.pdf'
+  },
+  {
+    rollNumber: '21IT023',
+    name: 'Arjun Mehta',
+    email: 'arjun.mehta@college.edu',
+    phone: '+91 98444 55667',
+    department: 'Information Technology',
+    skills: ['flutter', 'dart', 'firebase', 'android', 'ios'],
+    resumeFileName: '21IT023_Resume.pdf'
+  },
+  {
+    rollNumber: '22AI034',
+    name: 'Priya Nambiar',
+    email: 'priya.n@college.edu',
+    phone: '+91 98555 66778',
+    department: 'Data Science & AI',
+    skills: ['python', 'pandas', 'machine learning', 'nlp', 'tensorflow'],
+    resumeFileName: '22AI034_Resume.pdf'
+  },
+  {
+    rollNumber: '21CS142',
+    name: 'Karthik Nair',
+    email: 'karthik.nair@college.edu',
+    phone: '+91 98666 77889',
+    department: 'Computer Science',
+    skills: ['devops', 'aws', 'docker', 'kubernetes', 'ci/cd', 'linux'],
+    resumeFileName: '21CS142_Resume.pdf'
+  },
+  {
+    rollNumber: '22EC019',
+    name: 'Rohan Verma',
+    email: 'rohan.v@college.edu',
+    phone: '+91 98777 88990',
+    department: 'Electronics & Communication',
+    skills: ['c++', 'embedded c', 'iot', 'python', 'arduino'],
+    resumeFileName: '22EC019_Resume.pdf'
   }
 ];
 
