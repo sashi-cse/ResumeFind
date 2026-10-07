@@ -407,15 +407,6 @@ function renderCandidates(candidates, searchType, queryText) {
               <i data-lucide="download" class="w-3.5 h-3.5"></i>
               <span>Download</span>
             </a>
-
-            <!-- Edit Candidate & Replace Resume Option -->
-            <button
-              onclick="openEditModal('${c.rollNumber}')"
-              class="p-2 rounded-xl text-gray-400 dark:text-neutral-400 hover:text-apple-blue dark:hover:text-apple-blue hover:bg-apple-blue/10 dark:hover:bg-apple-blue/10 transition"
-              title="Edit candidate & replace resume"
-            >
-              <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
-            </button>
           </div>
         </div>
       `;
