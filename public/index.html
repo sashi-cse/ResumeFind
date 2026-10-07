@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ResumeFinder • Placement & Talent Portal</title>
+  
+  <!-- Early Dark Mode Detection to prevent flash of wrong theme -->
+  <script>
+    if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  </script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Custom Apple / iOS Styling -->
+  <link rel="stylesheet" href="style.css" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            apple: {
+              blue: '#0071E3',
+              hover: '#0077ED',
+              gray: '#F5F5F7',
+              dark: '#1D1D1F',
+              card: 'rgba(255, 255, 255, 0.78)',
+              border: 'rgba(210, 210, 215, 0.65)',
+              success: '#34C759',
+              warning: '#FF9500',
+              accent: '#5856D6'
+            }
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', '"SF Pro Text"', 'Inter', 'Segoe UI', 'Roboto', 'sans-serif']
+          },
+          boxShadow: {
+            'ios-card': '0 8px 30px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.03)',
+            'ios-elevated': '0 20px 40px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04)',
+            'ios-modal': '0 25px 60px -15px rgba(0, 0, 0, 0.3)'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-[#F5F5F7] dark:bg-[#000000] text-apple-dark dark:text-neutral-100 font-sans min-h-screen antialiased selection:bg-apple-blue selection:text-white transition-colors duration-200">
+
+  <!-- Dynamic Island / Toast Notification Container -->
+  <div id="toastContainer" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 pointer-events-none w-full max-w-sm px-4"></div>
+
+  <!-- iOS Frosted Glass Top Navigation Bar -->
+  <header class="sticky top-0 z-40 bg-white/70 dark:bg-[#1C1C1E]/75 backdrop-blur-2xl border-b border-apple-border dark:border-white/10 transition-colors duration-200">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <!-- App Brand -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-apple-blue to-apple-accent text-white flex items-center justify-center shadow-md shadow-apple-blue/20">
+          <i data-lucide="file-badge" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-semibold tracking-tight text-apple-dark dark:text-white flex items-center gap-2">
+            ResumeFinder
+            <span class="text-[11px] font-medium tracking-wide uppercase px-2 py-0.5 rounded-full bg-apple-blue/10 dark:bg-apple-blue/20 text-apple-blue dark:text-blue-400 border border-apple-blue/20">Portal</span>
+          </h1>
+          <p class="text-[12px] text-gray-500 dark:text-neutral-400 hidden sm:block">Campus Placement & Skill Retrieval</p>
+        </div>
+      </div>
+
+      <!-- Header Right Actions: Live DB Status & Dark Mode Switcher -->
+      <div class="flex items-center gap-2.5">
+        <!-- Live Database Badge -->
+        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-medium">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span class="hidden sm:inline">Database:</span> <span class="font-semibold">resume_portal</span>
+        </div>
+
+        <!-- Apple-Styled Dark/Light Mode Toggle Button -->
+        <button
+          id="themeToggleBtn"
+          onclick="toggleTheme()"
+          class="p-2 sm:px-3 sm:py-1.5 rounded-2xl bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15 text-apple-dark dark:text-white border border-black/5 dark:border-white/10 transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+          title="Toggle Light/Dark Theme"
+        >
+          <i data-lucide="moon" id="themeIcon" class="w-4 h-4 text-apple-dark dark:text-amber-300"></i>
+          <span id="themeText" class="text-xs font-semibold hidden sm:inline">Theme</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-8">
+
+    <!-- iOS Segmented Control Tab Switcher -->
+    <div class="flex justify-center">
+      <div class="inline-flex p-1 bg-black/5 dark:bg-white/10 backdrop-blur-md rounded-2xl border border-black/5 dark:border-white/10 shadow-inner" role="tablist">
+        <button id="tabSearchBtn" onclick="switchTab('search')" class="tab-btn active px-6 py-2 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2">
+          <i data-lucide="search" class="w-4 h-4"></i>
+          <span>Search Resumes</span>
+        </button>
+        <button id="tabRegisterBtn" onclick="switchTab('register')" class="tab-btn px-6 py-2 rounded-xl text-sm font-medium text-gray-600 dark:text-neutral-400 hover:text-apple-dark dark:hover:text-white transition-all duration-200 flex items-center gap-2">
+          <i data-lucide="user-plus" class="w-4 h-4"></i>
+          <span>Add Candidate</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 1: SEARCH & RETRIEVAL (Default) -->
+    <!-- ======================================================== -->
+    <section id="searchSection" class="space-y-6">
+      
+      <!-- Spotlight Search Box (iOS Look & Feel) -->
+      <div class="relative max-w-3xl mx-auto">
+        <div class="ios-card p-3 sm:p-4 rounded-3xl border shadow-ios-elevated transition-all focus-within:ring-2 focus-within:ring-apple-blue/40">
+          <div class="flex items-center gap-3">
+            <div class="text-gray-400 dark:text-neutral-400 pl-2">
+              <i data-lucide="search" class="w-6 h-6 text-apple-blue"></i>
+            </div>
+            <input
+              type="text"
+              id="searchInput"
+              placeholder="Search by skillset (e.g. ReactJS, NodeJS) or Roll Number..."
+              autocomplete="off"
+              class="w-full bg-transparent text-apple-dark dark:text-white placeholder-gray-400 dark:placeholder-neutral-500 text-base sm:text-lg font-normal focus:outline-none"
+            />
+            <button id="clearSearchBtn" onclick="clearSearch()" class="hidden p-1.5 rounded-full hover:bg-gray-200 dark:hover:bg-white/10 text-gray-400 dark:text-neutral-400 transition" title="Clear search">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+            <button onclick="performSearch()" class="px-5 py-2.5 rounded-2xl bg-apple-blue hover:bg-apple-hover active:scale-95 text-white font-medium text-sm transition-all shadow-md shadow-apple-blue/20 flex items-center gap-1.5 shrink-0">
+              <span>Find</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+          </div>
+
+          <!-- Search Mode / Filter Hints -->
+          <div class="mt-3 pt-3 border-t border-gray-100 dark:border-white/10 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-neutral-400 px-2">
+            <div class="flex items-center gap-2">
+              <span class="font-medium text-gray-400 dark:text-neutral-500">Search Mode:</span>
+              <span id="searchModeBadge" class="px-2 py-0.5 rounded-md bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-neutral-300 font-medium">Smart Auto-Detect</span>
+            </div>
+            <div class="flex items-center gap-1.5 text-gray-400 dark:text-neutral-500">
+              <i data-lucide="info" class="w-3.5 h-3.5"></i>
+              <span>Separate multiple skills with commas</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick-Filter Popular Skill Chips -->
+        <div class="mt-4 flex flex-wrap items-center justify-center gap-2 px-2" id="quickSkillsContainer">
+          <span class="text-xs font-medium text-gray-400 dark:text-neutral-400 mr-1 flex items-center gap-1">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-apple-blue"></i> Quick Skills:
+          </span>
+          <button onclick="applySkillChip('reactjs')" class="skill-chip">#reactjs</button>
+          <button onclick="applySkillChip('nodejs')" class="skill-chip">#nodejs</button>
+          <button onclick="applySkillChip('expressjs')" class="skill-chip">#expressjs</button>
+          <button onclick="applySkillChip('mongodb')" class="skill-chip">#mongodb</button>
+          <button onclick="applySkillChip('python')" class="skill-chip">#python</button>
+          <button onclick="applySkillChip('sql')" class="skill-chip">#sql</button>
+        </div>
+      </div>
+
+      <!-- Results Header & Counter -->
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-b border-gray-200/70 dark:border-white/10 pb-3">
+        <div class="flex items-center gap-2">
+          <h2 class="text-xl font-bold tracking-tight text-apple-dark dark:text-white">Candidate Resumes</h2>
+          <span id="resultCountBadge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-neutral-300">Loading...</span>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-neutral-400">
+          <span id="searchStatusText">Showing all registered candidates</span>
+        </div>
+      </div>
+
+      <!-- Candidates Grid / Results Cards -->
+      <div id="candidatesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- Rendered dynamically via app.js -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="hidden text-center py-16 px-4">
+        <div class="w-16 h-16 rounded-3xl bg-gray-100 dark:bg-white/10 text-gray-400 dark:text-neutral-400 mx-auto flex items-center justify-center mb-4">
+          <i data-lucide="file-question" class="w-8 h-8"></i>
+        </div>
+        <h3 class="text-lg font-semibold text-apple-dark dark:text-white">No matching resumes found</h3>
+        <p class="text-sm text-gray-500 dark:text-neutral-400 max-w-md mx-auto mt-1">Try searching for other skill keywords or verify the student roll number.</p>
+        <button onclick="clearSearch()" class="mt-4 px-4 py-2 rounded-xl bg-gray-200 dark:bg-white/10 hover:bg-gray-300 dark:hover:bg-white/20 text-apple-dark dark:text-white text-xs font-semibold transition">
+          Show All Candidates
+        </button>
+      </div>
+
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 2: REGISTER / ADD CANDIDATE -->
+    <!-- ======================================================== -->
+    <section id="registerSection" class="hidden max-w-2xl mx-auto">
+      <div class="ios-card rounded-3xl p-6 sm:p-8 border shadow-ios-elevated space-y-6">
+        
+        <div>
+          <h2 class="text-xl font-bold tracking-tight text-apple-dark dark:text-white">Add Student Candidate</h2>
+          <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Register candidate details and attach their PDF resume linked to their Roll Number.</p>
+        </div>
+
+        <!-- Smart Update / Existing Student Banner -->
+        <div id="existingCandidateBanner" class="hidden p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300 flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <i data-lucide="info" class="w-4 h-4 shrink-0 text-amber-500"></i>
+            <span>Existing student detected (<strong id="detectedCandidateName">Roushan</strong>). Submitting will <strong>update their profile and replace their resume</strong>.</span>
+          </div>
+          <button type="button" onclick="clearRegistrationForm()" class="text-amber-600 dark:text-amber-400 hover:underline font-semibold text-[11px] shrink-0">Clear Form</button>
+        </div>
+
+        <form id="candidateForm" onsubmit="handleCandidateSubmit(event)" class="space-y-5">
+          <!-- Roll Number (Unique Key) -->
+          <div>
+            <label for="formRollNumber" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
+              Roll Number <span class="text-rose-500">* (Unique Identifier)</span>
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
+                <i data-lucide="hash" class="w-4 h-4"></i>
+              </span>
+              <input
+                type="text"
+                id="formRollNumber"
+                required
+                placeholder="e.g. 21CS042"
+                autocomplete="off"
+                oninput="this.value = this.value.toUpperCase()"
+                class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white font-mono text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
+              />
+            </div>
+          </div>
+
+          <!-- Full Name -->
+          <div>
+            <label for="formName" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
+              Full Name <span class="text-rose-500">*</span>
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
+                <i data-lucide="user" class="w-4 h-4"></i>
+              </span>
+              <input
+                type="text"
+                id="formName"
+                required
+                placeholder="e.g. Rahul Sharma"
+                class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
+              />
+            </div>
+          </div>
+
+          <!-- Contact Details (2 Columns) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label for="formEmail" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
+                Email Address
+              </label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
+                  <i data-lucide="mail" class="w-4 h-4"></i>
+                </span>
+                <input
+                  type="email"
+                  id="formEmail"
+                  placeholder="rahul@college.edu"
+                  class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
+                />
+              </div>
+            </div>
+            <div>
+              <label for="formDepartment" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
+                Department / Branch
+              </label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
+                  <i data-lucide="graduation-cap" class="w-4 h-4"></i>
+                </span>
+                <input
+                  type="text"
+                  id="formDepartment"
+                  placeholder="e.g. Computer Science"
+                  class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Interactive Skillset Tag Input -->
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
+              Candidate Skillset <span class="text-rose-500">*</span>
+            </label>
+            <div class="p-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 focus-within:bg-white dark:focus-within:bg-[#2C2C2E] focus-within:border-apple-blue focus-within:ring-2 focus-within:ring-apple-blue/20 transition">
+              <div id="skillsTagContainer" class="flex flex-wrap gap-1.5 mb-2"></div>
+              <input
+                type="text"
+                id="skillTagInput"
+                placeholder="Type a skill and press Enter or comma (e.g. ReactJS, NodeJS)..."
+                class="w-full bg-transparent text-sm text-apple-dark dark:text-white outline-none placeholder-gray-400 dark:placeholder-neutral-500 px-1 py-0.5"
+              />
+            </div>
+            <p class="text-[11px] text-gray-400 dark:text-neutral-500 mt-1">Press Enter or type a comma to add multiple skill tags.</p>
+          </div>
+
+          <!-- Resume PDF Upload Dropzone -->
+          <div>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
+              Resume Document <span class="text-rose-500">* (PDF Only)</span>
+            </label>
+            <div
+              id="dropzone"
+              onclick="document.getElementById('formResumeFile').click()"
+              class="border-2 border-dashed border-gray-200 dark:border-white/15 hover:border-apple-blue dark:hover:border-apple-blue rounded-3xl p-6 text-center cursor-pointer transition bg-gray-50/50 dark:bg-white/5 hover:bg-apple-blue/5 group"
+            >
+              <input type="file" id="formResumeFile" accept=".pdf,application/pdf" class="hidden" onchange="handleFileSelected(event)" />
+              <div id="dropzoneEmpty" class="space-y-2">
+                <div class="w-12 h-12 rounded-2xl bg-apple-blue/10 text-apple-blue mx-auto flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+                </div>
+                <div>
+                  <p class="text-sm font-medium text-apple-dark dark:text-white">Click to browse or drop resume PDF here</p>
+                  <p class="text-xs text-gray-400 dark:text-neutral-500">PDF up to 10MB • Will be stored under candidate roll number</p>
+                </div>
+              </div>
+
+              <!-- Selected File Preview -->
+              <div id="dropzoneSelected" class="hidden flex items-center justify-between p-3 rounded-2xl bg-white dark:bg-[#2C2C2E] border border-apple-border dark:border-white/10 shadow-sm">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center">
+                    <i data-lucide="file-text" class="w-5 h-5"></i>
+                  </div>
+                  <div class="text-left">
+                    <p id="selectedFileName" class="text-sm font-semibold text-apple-dark dark:text-white truncate max-w-xs"></p>
+                    <p id="selectedFileSize" class="text-xs text-gray-400 dark:text-neutral-500"></p>
+                  </div>
+                </div>
+                <button type="button" onclick="clearSelectedFile(event)" class="p-1.5 text-gray-400 dark:text-neutral-400 hover:text-rose-600 transition" title="Remove file">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="pt-2">
+            <button
+              type="submit"
+              id="submitCandidateBtn"
+              class="w-full py-3.5 px-6 rounded-2xl bg-apple-blue hover:bg-apple-hover active:scale-[0.99] text-white font-semibold text-sm transition-all shadow-lg shadow-apple-blue/25 flex items-center justify-center gap-2"
+            >
+              <i data-lucide="check" class="w-4 h-4"></i>
+              <span>Save & Upload Resume</span>
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ======================================================== -->
+  <!-- iOS MODAL SHEET: RESUME PDF VIEWER -->
+  <!-- ======================================================== -->
+  <div id="previewModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md transition-opacity">
+    <div class="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl w-full max-w-4xl h-[88vh] rounded-3xl shadow-ios-modal border border-white/60 dark:border-white/10 flex flex-col overflow-hidden animate-scale-up">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-gray-200/70 dark:border-white/10 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 truncate">
+          <div class="w-9 h-9 rounded-xl bg-apple-blue/10 text-apple-blue flex items-center justify-center shrink-0">
+            <i data-lucide="file-text" class="w-5 h-5"></i>
+          </div>
+          <div class="truncate">
+            <h3 id="modalCandidateName" class="text-base font-bold text-apple-dark dark:text-white truncate">Candidate Resume</h3>
+            <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-neutral-400">
+              <span id="modalRollNumber" class="font-mono font-medium text-apple-blue">21CS042</span>
+              <span>•</span>
+              <span id="modalDepartment">Engineering</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Direct Download from modal -->
+          <button id="modalDownloadBtn" class="px-3.5 py-1.5 rounded-xl bg-apple-blue hover:bg-apple-hover text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Download PDF</span>
+          </button>
+          <!-- Close Modal -->
+          <button onclick="closePreviewModal()" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-600 dark:text-neutral-300 flex items-center justify-center transition" title="Close">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- PDF Frame Viewport -->
+      <div class="flex-1 bg-gray-100 dark:bg-black/40 relative">
+        <iframe id="pdfIframe" src="about:blank" class="w-full h-full border-none" title="PDF Preview"></iframe>
+        <div id="pdfLoading" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 dark:bg-[#1C1C1E]">
+          <div class="w-8 h-8 border-3 border-apple-blue border-t-transparent rounded-full animate-spin mb-2"></div>
+          <p class="text-xs text-gray-500 dark:text-neutral-400">Loading Resume Preview...</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- iOS MODAL SHEET: EDIT CANDIDATE & REPLACE RESUME -->
+  <!-- ======================================================== -->
+  <div id="editModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md transition-opacity">
+    <div class="bg-white/95 dark:bg-[#1C1C1E]/95 backdrop-blur-2xl w-full max-w-xl max-h-[90vh] rounded-3xl shadow-ios-modal border border-white/60 dark:border-white/10 flex flex-col overflow-hidden animate-scale-up">
+      
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-gray-200/70 dark:border-white/10 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-apple-blue/10 text-apple-blue flex items-center justify-center shrink-0">
+            <i data-lucide="edit-3" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-apple-dark dark:text-white">Edit Candidate & Resume</h3>
+            <p class="text-xs text-gray-500 dark:text-neutral-400">Update student details or replace the PDF resume file.</p>
+          </div>
+        </div>
+        <button onclick="closeEditModal()" class="w-8 h-8 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-600 dark:text-neutral-300 flex items-center justify-center transition" title="Close">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Modal Body (Scrollable Form) -->
+      <form id="editCandidateForm" onsubmit="handleEditSubmit(event)" class="p-5 sm:p-6 space-y-4 overflow-y-auto">
+        <!-- Roll Number (Locked / Readonly) -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1">
+            Roll Number (Locked Identifier)
+          </label>
+          <div class="px-3.5 py-2.5 rounded-2xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 font-mono font-bold text-sm text-apple-blue dark:text-blue-400 flex items-center justify-between">
+            <span id="editRollNumberText">21CS042</span>
+            <span class="text-[11px] font-normal text-gray-400 flex items-center gap-1">
+              <i data-lucide="lock" class="w-3 h-3"></i> Unique Key
+            </span>
+          </div>
+          <input type="hidden" id="editRollNumber" />
+        </div>
+
+        <!-- Full Name -->
+        <div>
+          <label for="editName" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1">
+            Full Name <span class="text-rose-500">*</span>
+          </label>
+          <input
+            type="text"
+            id="editName"
+            required
+            class="w-full px-3.5 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
+          />
+        </div>
+
+        <!-- Email & Department -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label for="editEmail" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1">
+              Email
+            </label>
+            <input
+              type="email"
+              id="editEmail"
+              class="w-full px-3.5 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue outline-none transition"
+            />
+          </div>
+          <div>
+            <label for="editDepartment" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1">
+              Department
+            </label>
+            <input
+              type="text"
+              id="editDepartment"
+              class="w-full px-3.5 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue outline-none transition"
+            />
+          </div>
+        </div>
+
+        <!-- Edit Skillset Tag Input -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1">
+            Skillset <span class="text-rose-500">*</span>
+          </label>
+          <div class="p-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 focus-within:bg-white dark:focus-within:bg-[#2C2C2E] focus-within:border-apple-blue transition">
+            <div id="editSkillsTagContainer" class="flex flex-wrap gap-1.5 mb-2"></div>
+            <input
+              type="text"
+              id="editSkillTagInput"
+              placeholder="Add skill tag (press Enter or comma)..."
+              class="w-full bg-transparent text-sm text-apple-dark dark:text-white outline-none placeholder-gray-400 dark:placeholder-neutral-500 px-1 py-0.5"
+            />
+          </div>
+        </div>
+
+        <!-- Replace Resume File Section -->
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1">
+            Resume PDF File
+          </label>
+          <div class="p-3 rounded-2xl bg-gray-100/70 dark:bg-white/5 border border-gray-200 dark:border-white/10 mb-2 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2 text-gray-600 dark:text-neutral-300 truncate">
+              <i data-lucide="file-check" class="w-4 h-4 text-emerald-500 shrink-0"></i>
+              <span class="truncate">Current: <span id="editCurrentFileName" class="font-mono font-medium">Resume.pdf</span></span>
+            </div>
+            <span class="text-[11px] text-gray-400 shrink-0">On Disk</span>
+          </div>
+
+          <!-- Optional Replace File Dropzone -->
+          <div
+            id="editDropzone"
+            onclick="document.getElementById('editResumeFile').click()"
+            class="border-2 border-dashed border-gray-200 dark:border-white/15 hover:border-apple-blue rounded-2xl p-4 text-center cursor-pointer transition bg-gray-50/50 dark:bg-white/5 group"
+          >
+            <input type="file" id="editResumeFile" accept=".pdf,application/pdf" class="hidden" onchange="handleEditFileSelected(event)" />
+            <div id="editDropzoneEmpty" class="space-y-1">
+              <i data-lucide="upload-cloud" class="w-5 h-5 mx-auto text-apple-blue"></i>
+              <p class="text-xs font-medium text-apple-dark dark:text-white">Click to select NEW PDF to replace current resume</p>
+              <p class="text-[11px] text-gray-400">Leave empty to keep existing resume</p>
+            </div>
+            <div id="editDropzoneSelected" class="hidden flex items-center justify-between p-2 rounded-xl bg-white dark:bg-[#2C2C2E] border border-apple-border dark:border-white/10">
+              <div class="flex items-center gap-2 truncate">
+                <i data-lucide="file-text" class="w-4 h-4 text-rose-500 shrink-0"></i>
+                <span id="editSelectedFileName" class="text-xs font-semibold truncate text-apple-dark dark:text-white"></span>
+              </div>
+              <button type="button" onclick="clearEditSelectedFile(event)" class="p-1 text-gray-400 hover:text-rose-500">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Submit & Cancel Buttons -->
+        <div class="pt-3 flex items-center gap-3">
+          <button
+            type="button"
+            onclick="closeEditModal()"
+            class="flex-1 py-2.5 px-4 rounded-xl bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 text-apple-dark dark:text-white font-medium text-xs transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            id="editSubmitBtn"
+            class="flex-1 py-2.5 px-4 rounded-xl bg-apple-blue hover:bg-apple-hover text-white font-semibold text-xs transition shadow-md shadow-apple-blue/25 flex items-center justify-center gap-1.5"
+          >
+            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+            <span>Save Changes</span>
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="app.js"></script>
+</body>
+</html>
