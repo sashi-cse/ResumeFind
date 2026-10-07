@@ -169,6 +169,32 @@ function parseSkills(skillsInput) {
   return [...new Set(rawList.map(s => s.trim().toLowerCase()).filter(Boolean))];
 }
 
+// Helper to resolve resume file path reliably across environments (Windows local vs Linux Render)
+function resolveResumePath(candidate) {
+  if (!candidate) return null;
+  // 1. Direct path check if it exists on host disk
+  if (candidate.resumePath && fs.existsSync(candidate.resumePath)) {
+    return candidate.resumePath;
+  }
+  // 2. Look in local uploads/resumes by candidate.resumeFileName
+  if (candidate.resumeFileName) {
+    const byFileName = path.join(__dirname, '..', 'uploads', 'resumes', candidate.resumeFileName);
+    if (fs.existsSync(byFileName)) return byFileName;
+  }
+  // 3. Look in local uploads/resumes by roll number
+  if (candidate.rollNumber) {
+    const byRoll = path.join(__dirname, '..', 'uploads', 'resumes', `${candidate.rollNumber}_Resume.pdf`);
+    if (fs.existsSync(byRoll)) return byRoll;
+  }
+  // 4. Look in local uploads/resumes by basename of candidate.resumePath
+  if (candidate.resumePath) {
+    const base = path.basename(candidate.resumePath);
+    const byBase = path.join(__dirname, '..', 'uploads', 'resumes', base);
+    if (fs.existsSync(byBase)) return byBase;
+  }
+  return null;
+}
+
 // -------------------------------------------------------------
 // POST /api/candidates - Add Candidate & Upload Resume
 // -------------------------------------------------------------
@@ -464,13 +490,13 @@ router.get('/:rollNumber/preview', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Candidate not found.' });
     }
 
-    const filePath = candidate.resumePath;
-    if (!fs.existsSync(filePath)) {
+    const filePath = resolveResumePath(candidate);
+    if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({ success: false, message: 'Resume PDF file not found on disk.' });
     }
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${candidate.resumeFileName}"`);
+    res.setHeader('Content-Disposition', `inline; filename="${candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`}"`);
     fs.createReadStream(filePath).pipe(res);
   } catch (error) {
     console.error('Error previewing resume:', error);
@@ -490,13 +516,13 @@ router.get('/:rollNumber/download', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Candidate not found.' });
     }
 
-    const filePath = candidate.resumePath;
-    if (!fs.existsSync(filePath)) {
+    const filePath = resolveResumePath(candidate);
+    if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({ success: false, message: 'Resume PDF file not found on disk.' });
     }
 
     // Clean human-friendly download filename: e.g. "21CS042_Rahul_Sharma_Resume.pdf"
-    const safeName = candidate.name.replace(/[^a-zA-Z0-9]/g, '_');
+    const safeName = (candidate.name || 'Candidate').replace(/[^a-zA-Z0-9]/g, '_');
     const downloadName = `${candidate.rollNumber}_${safeName}_Resume.pdf`;
 
     res.download(filePath, downloadName, err => {
@@ -586,9 +612,10 @@ router.delete('/:rollNumber', async (req, res) => {
     }
 
     // Delete file from disk if present
-    if (candidate.resumePath && fs.existsSync(candidate.resumePath)) {
+    const filePath = resolveResumePath(candidate);
+    if (filePath && fs.existsSync(filePath)) {
       try {
-        fs.unlinkSync(candidate.resumePath);
+        fs.unlinkSync(filePath);
       } catch (e) {
         console.warn('Could not delete file from disk:', e.message);
       }
