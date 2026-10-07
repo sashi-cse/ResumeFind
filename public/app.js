@@ -416,15 +416,6 @@ function renderCandidates(candidates, searchType, queryText) {
             >
               <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
             </button>
-
-            <!-- Delete Candidate Option -->
-            <button
-              onclick="deleteCandidate('${c.rollNumber}', '${encodeURIComponent(c.name)}')"
-              class="p-2 rounded-xl text-gray-300 dark:text-neutral-600 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition"
-              title="Delete candidate"
-            >
-              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-            </button>
           </div>
         </div>
       `;
