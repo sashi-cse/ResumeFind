@@ -488,8 +488,8 @@ router.get('/search', async (req, res) => {
     const type = req.query.type || 'auto'; // 'auto', 'skills', 'roll'
 
     if (!query) {
-      // Return all candidates sorted by newest
-      const allCandidates = await Candidate.find().sort({ createdAt: -1 });
+      // Return all candidates sorted by newest (recently updated first)
+      const allCandidates = await Candidate.find().sort({ updatedAt: -1, createdAt: -1 });
       return res.json({
         success: true,
         count: allCandidates.length,
@@ -528,7 +528,7 @@ router.get('/search', async (req, res) => {
     const searchTerms = parseSkills(query);
 
     if (searchTerms.length === 0) {
-      const all = await Candidate.find().sort({ createdAt: -1 });
+      const all = await Candidate.find().sort({ updatedAt: -1, createdAt: -1 });
       return res.json({
         success: true,
         count: all.length,
@@ -585,7 +585,7 @@ router.get('/search', async (req, res) => {
 
       if (b.matchScore !== a.matchScore) return b.matchScore - a.matchScore;
       if (b.matchCount !== a.matchCount) return b.matchCount - a.matchCount;
-      return new Date(b.createdAt) - new Date(a.createdAt);
+      return (new Date(b.updatedAt || b.createdAt)) - (new Date(a.updatedAt || a.createdAt));
     });
 
     res.json({
@@ -606,7 +606,7 @@ router.get('/search', async (req, res) => {
 // -------------------------------------------------------------
 router.get('/', async (req, res) => {
   try {
-    const candidates = await Candidate.find().sort({ createdAt: -1 });
+    const candidates = await Candidate.find().sort({ updatedAt: -1, createdAt: -1 });
     res.json({
       success: true,
       count: candidates.length,

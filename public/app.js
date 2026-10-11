@@ -296,6 +296,7 @@ async function checkMyProfileInDatabase(isManual = false) {
     const queryParams = new URLSearchParams();
     if (currentStudentUser.googleId) queryParams.append('googleId', currentStudentUser.googleId);
     if (currentStudentUser.email) queryParams.append('email', currentStudentUser.email);
+    queryParams.append('_t', Date.now());
 
     const res = await fetch(`/api/candidates/my-profile?${queryParams.toString()}`);
     const data = await res.json();
@@ -582,7 +583,7 @@ async function performSearch() {
 
   try {
     statusText.textContent = `Searching for "${query}"...`;
-    const res = await fetch(`/api/candidates/search?q=${encodeURIComponent(query)}`);
+    const res = await fetch(`/api/candidates/search?q=${encodeURIComponent(query)}&_t=${Date.now()}`);
     const data = await res.json();
 
     if (data.success) {
@@ -620,7 +621,7 @@ async function loadAllCandidates() {
   statusText.textContent = 'Showing all registered candidates';
 
   try {
-    const res = await fetch('/api/candidates');
+    const res = await fetch(`/api/candidates?_t=${Date.now()}`);
     const data = await res.json();
     if (data.success) {
       currentCandidates = data.data;
@@ -1019,8 +1020,14 @@ async function handleCandidateSubmit(e) {
       clearSelectedFile();
       await loadQuickSkills();
       await checkMyProfileInDatabase(false);
+      // Reset search input so updated profile immediately shows at top of candidate list
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) searchInput.value = '';
+      const clearSearchBtn = document.getElementById('clearSearchBtn');
+      if (clearSearchBtn) clearSearchBtn.classList.add('hidden');
+      currentSearchedTerms = [];
       switchTab('search');
-      loadAllCandidates();
+      await loadAllCandidates();
     } else {
       showToast(data.message || 'Failed to save candidate', 'error');
     }
@@ -1388,7 +1395,12 @@ async function handleEditSubmit(e) {
     if (data.success) {
       showToast(`Student ${rollNumber} updated successfully!`, 'success');
       closeEditModal();
-      performSearch();
+      const searchInput = document.getElementById('searchInput');
+      if (searchInput) searchInput.value = '';
+      const clearSearchBtn = document.getElementById('clearSearchBtn');
+      if (clearSearchBtn) clearSearchBtn.classList.add('hidden');
+      currentSearchedTerms = [];
+      await loadAllCandidates();
       loadQuickSkills();
     } else {
       showToast(data.message || 'Error updating candidate.', 'error');
