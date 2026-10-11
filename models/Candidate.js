@@ -21,6 +21,21 @@ const CandidateSchema = new mongoose.Schema(
       lowercase: true,
       default: ''
     },
+    gkvEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: ''
+    },
+    googleId: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    googlePicture: {
+      type: String,
+      default: ''
+    },
     phone: {
       type: String,
       trim: true,

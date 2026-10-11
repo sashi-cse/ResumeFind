@@ -20,6 +20,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // API Routes
 app.use('/api/candidates', candidateRoutes);
+app.use('/api/auth', candidateRoutes);
+app.use('/api', candidateRoutes);
 
 // Health & Status route
 app.get('/api/health', (req, res) => {

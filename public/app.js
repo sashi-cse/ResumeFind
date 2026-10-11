@@ -1,5 +1,8 @@
 // ResumeFinder Client Application
 
+const GOOGLE_CLIENT_ID = '744894548754-rthokkpmrhrb4dnne6p3ps07700la64t.apps.googleusercontent.com';
+let currentStudentUser = null;
+let currentExistingProfile = null;
 let currentCandidates = [];
 let currentSkillsInput = [];
 let selectedFile = null;
@@ -107,13 +110,19 @@ document.addEventListener('DOMContentLoaded', () => {
   setupRollNumberDetection();
   loadAllCandidates();
   loadQuickSkills();
+  initGoogleAuth();
 });
 
 // -------------------------------------------------------------
 // THEME SWITCHER (iOS Light / Dark Mode)
 // -------------------------------------------------------------
 function initTheme() {
-  const isDark = document.documentElement.classList.contains('dark');
+  const isDark = localStorage.getItem('theme') === 'dark';
+  if (isDark) {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
   updateThemeIcon(isDark);
 }
 
@@ -133,6 +142,367 @@ function updateThemeIcon(isDark) {
   if (text) {
     text.textContent = isDark ? 'Light' : 'Dark';
   }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+// -------------------------------------------------------------
+// GOOGLE AUTHENTICATION & STUDENT SESSION
+// -------------------------------------------------------------
+function initGoogleAuth() {
+  const stored = localStorage.getItem('resume_student_user');
+  if (stored) {
+    try {
+      currentStudentUser = JSON.parse(stored);
+      applyStudentSessionUI(currentStudentUser);
+      // Auto-check database profile on session restore
+      checkMyProfileInDatabase(false);
+    } catch (_) {
+      localStorage.removeItem('resume_student_user');
+    }
+  }
+
+  const trySetup = () => {
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+      setupGoogleButton();
+      return true;
+    }
+    return false;
+  };
+
+  if (!trySetup()) {
+    let retries = 0;
+    const interval = setInterval(() => {
+      retries++;
+      if (trySetup() || retries > 25) {
+        clearInterval(interval);
+      }
+    }, 200);
+  }
+}
+
+function setupGoogleButton() {
+  try {
+    if (!window.google || !window.google.accounts || !window.google.accounts.id) return;
+
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleSignInCallback,
+      auto_select: false
+    });
+
+    const btnWrapper = document.getElementById('googleBtnWrapper');
+    if (btnWrapper) {
+      btnWrapper.innerHTML = '';
+      google.accounts.id.renderButton(btnWrapper, {
+        theme: document.documentElement.classList.contains('dark') ? 'filled_black' : 'outline',
+        size: 'large',
+        type: 'standard',
+        shape: 'pill',
+        text: 'continue_with',
+        logo_alignment: 'left',
+        width: 250
+      });
+    }
+  } catch (err) {
+    console.warn('Error rendering Google button:', err);
+  }
+}
+
+async function handleGoogleSignInCallback(response) {
+  if (!response || !response.credential) {
+    showToast('Failed to receive Google credential token.', 'error');
+    return;
+  }
+
+  try {
+    showToast('Verifying Google credentials...', 'info');
+    const res = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential: response.credential })
+    });
+
+    const data = await res.json();
+    if (!data.success) {
+      showToast(data.message || 'Google verification failed.', 'error');
+      return;
+    }
+
+    currentStudentUser = {
+      ...data.user,
+      token: response.credential
+    };
+    localStorage.setItem('resume_student_user', JSON.stringify(currentStudentUser));
+
+    applyStudentSessionUI(currentStudentUser);
+    showToast(`Welcome, ${currentStudentUser.name}!`, 'success');
+
+    // Run database check to auto-detect existing profile
+    await checkMyProfileInDatabase(false);
+  } catch (err) {
+    console.error('Google auth error:', err);
+    showToast('Error during Google sign-in. Please try again.', 'error');
+  }
+}
+
+function applyStudentSessionUI(user) {
+  if (!user) return;
+  const authGate = document.getElementById('studentAuthGate');
+  const formWrapper = document.getElementById('studentFormWrapper');
+  const avatar = document.getElementById('authStudentAvatar');
+  const nameEl = document.getElementById('authStudentName');
+  const emailEl = document.getElementById('authStudentEmail');
+
+  if (authGate) authGate.classList.add('hidden');
+  if (formWrapper) formWrapper.classList.remove('hidden');
+
+  if (avatar && user.picture) avatar.src = user.picture;
+  if (nameEl) nameEl.textContent = user.name || 'Verified Student';
+  if (emailEl) emailEl.textContent = user.email || '';
+
+  const nameInput = document.getElementById('formName');
+  const emailInput = document.getElementById('formEmail');
+  if (nameInput && !nameInput.value) nameInput.value = user.name || '';
+  if (emailInput && !emailInput.value) emailInput.value = user.email || '';
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+// -------------------------------------------------------------
+// DATABASE PROFILE CHECK & AUTO-DETECTION
+// -------------------------------------------------------------
+async function checkMyProfileInDatabase(isManual = false) {
+  if (!currentStudentUser) {
+    if (isManual) showToast('Please sign in with Google first.', 'error');
+    return;
+  }
+
+  const checkBtn = document.getElementById('btnCheckDbProfile');
+  const dbBadge = document.getElementById('dbStatusBadge');
+  const dbTypeTag = document.getElementById('profileTypeTag');
+  const dbDesc = document.getElementById('dbStatusDescription');
+  const iconWrapper = document.getElementById('dbStatusIconWrapper');
+  const statusBanner = document.getElementById('profileStatusBanner');
+  const bannerIcon = document.getElementById('profileStatusBannerIcon');
+  const bannerText = document.getElementById('profileStatusBannerText');
+
+  try {
+    if (checkBtn) {
+      checkBtn.disabled = true;
+      checkBtn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>Checking DB...</span>`;
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    const queryParams = new URLSearchParams();
+    if (currentStudentUser.googleId) queryParams.append('googleId', currentStudentUser.googleId);
+    if (currentStudentUser.email) queryParams.append('email', currentStudentUser.email);
+
+    const res = await fetch(`/api/candidates/my-profile?${queryParams.toString()}`);
+    const data = await res.json();
+
+    if (data.success && data.exists && data.candidate) {
+      currentExistingProfile = data.candidate;
+
+      // Status header update
+      if (dbBadge) dbBadge.textContent = 'Profile Found in Database';
+      if (dbTypeTag) {
+        dbTypeTag.textContent = 'Existing Student';
+        dbTypeTag.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30';
+        dbTypeTag.classList.remove('hidden');
+      }
+      if (dbDesc) dbDesc.textContent = `Verified for ${data.candidate.name} (${data.candidate.rollNumber}). Registered in database.`;
+      if (iconWrapper) {
+        iconWrapper.className = 'w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0';
+      }
+
+      // Banner update
+      if (statusBanner && bannerIcon && bannerText) {
+        statusBanner.className = 'p-3.5 sm:p-4 rounded-2xl text-xs flex items-start justify-between gap-3 transition-all bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200';
+        bannerIcon.innerHTML = `<i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>`;
+        bannerText.innerHTML = `
+          <div class="font-bold text-sm text-emerald-800 dark:text-emerald-200">
+            ✓ Existing Profile Found for ${data.candidate.rollNumber} (${data.candidate.name})
+          </div>
+          <p class="text-emerald-700/90 dark:text-emerald-300/90 mt-0.5">
+            Your registered details and skillset have been auto-loaded. You can modify your skills or contact info below. Your active resume PDF is preserved unless you upload a new one.
+          </p>
+        `;
+        statusBanner.classList.remove('hidden');
+      }
+
+      // Populate form
+      populateStudentForm(data.candidate);
+
+      if (isManual) {
+        showToast(`✓ Profile found for ${data.candidate.name} (${data.candidate.rollNumber})!`, 'success');
+      }
+    } else {
+      currentExistingProfile = null;
+
+      // Status header update
+      if (dbBadge) dbBadge.textContent = 'No Profile in Database';
+      if (dbTypeTag) {
+        dbTypeTag.textContent = 'New Registration';
+        dbTypeTag.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30';
+        dbTypeTag.classList.remove('hidden');
+      }
+      if (dbDesc) dbDesc.textContent = 'No existing candidate record found for your Google account.';
+      if (iconWrapper) {
+        iconWrapper.className = 'w-9 h-9 rounded-xl bg-apple-blue/10 dark:bg-apple-blue/20 text-apple-blue flex items-center justify-center shrink-0';
+      }
+
+      // Banner update
+      if (statusBanner && bannerIcon && bannerText) {
+        statusBanner.className = 'p-3.5 sm:p-4 rounded-2xl text-xs flex items-start justify-between gap-3 transition-all bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/30 text-blue-800 dark:text-blue-200';
+        bannerIcon.innerHTML = `<i data-lucide="info" class="w-4 h-4 text-apple-blue"></i>`;
+        bannerText.innerHTML = `
+          <div class="font-bold text-sm text-blue-800 dark:text-blue-200">
+            👋 Welcome, ${currentStudentUser.name || 'Student'}!
+          </div>
+          <p class="text-blue-700/90 dark:text-blue-300/90 mt-0.5">
+            No existing resume profile was found in the database. Please enter your Roll Number, GKV Mail, Skills, and attach your resume PDF to register.
+          </p>
+        `;
+        statusBanner.classList.remove('hidden');
+      }
+
+      resetFormToNewStudentState();
+
+      if (isManual) {
+        showToast('No existing profile found. You can fill out the form to register!', 'info');
+      }
+    }
+  } catch (err) {
+    console.error('Check DB profile error:', err);
+    if (isManual) showToast('Failed to check database profile status.', 'error');
+  } finally {
+    if (checkBtn) {
+      checkBtn.disabled = false;
+      checkBtn.innerHTML = `<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><span>Check Database</span>`;
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+function populateStudentForm(candidate) {
+  if (!candidate) return;
+
+  const rollInput = document.getElementById('formRollNumber');
+  const nameInput = document.getElementById('formName');
+  const emailInput = document.getElementById('formEmail');
+  const gkvInput = document.getElementById('formGkvEmail');
+  const deptInput = document.getElementById('formDepartment');
+  const phoneInput = document.getElementById('formPhone');
+  const lockBadge = document.getElementById('rollNumberLockBadge');
+  const submitBtn = document.getElementById('submitCandidateBtn');
+  const resumeRequiredStar = document.getElementById('resumeRequiredStar');
+  const resumeOptionalNotice = document.getElementById('resumeOptionalNotice');
+  const existingResumeNotice = document.getElementById('existingResumeNotice');
+  const existingResumeFileName = document.getElementById('existingResumeFileName');
+
+  if (rollInput && candidate.rollNumber) {
+    rollInput.value = candidate.rollNumber;
+    rollInput.readOnly = true;
+    rollInput.classList.add('bg-gray-100/80', 'dark:bg-white/5', 'cursor-not-allowed');
+  }
+  if (lockBadge) lockBadge.classList.remove('hidden');
+
+  if (nameInput && candidate.name) nameInput.value = candidate.name;
+  if (emailInput && candidate.email) emailInput.value = candidate.email;
+  if (gkvInput && candidate.gkvEmail) gkvInput.value = candidate.gkvEmail;
+  if (deptInput && candidate.department) deptInput.value = candidate.department;
+  if (phoneInput && candidate.phone) phoneInput.value = candidate.phone;
+
+  if (Array.isArray(candidate.skills)) {
+    currentSkillsInput = [...candidate.skills];
+    renderSkillsTags();
+  }
+
+  // Active resume notice
+  if (existingResumeNotice) {
+    existingResumeNotice.classList.remove('hidden');
+    if (existingResumeFileName) {
+      existingResumeFileName.textContent = candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`;
+    }
+  }
+  if (resumeRequiredStar) resumeRequiredStar.classList.add('hidden');
+  if (resumeOptionalNotice) resumeOptionalNotice.classList.remove('hidden');
+
+  if (submitBtn) {
+    submitBtn.innerHTML = `
+      <i data-lucide="save" class="w-4 h-4"></i>
+      <span>Update Profile & Save Changes</span>
+    `;
+    submitBtn.className = 'w-full py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-semibold text-sm transition-all shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2';
+  }
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function resetFormToNewStudentState() {
+  const rollInput = document.getElementById('formRollNumber');
+  const nameInput = document.getElementById('formName');
+  const emailInput = document.getElementById('formEmail');
+  const lockBadge = document.getElementById('rollNumberLockBadge');
+  const submitBtn = document.getElementById('submitCandidateBtn');
+  const resumeRequiredStar = document.getElementById('resumeRequiredStar');
+  const resumeOptionalNotice = document.getElementById('resumeOptionalNotice');
+  const existingResumeNotice = document.getElementById('existingResumeNotice');
+
+  if (rollInput) {
+    rollInput.readOnly = false;
+    rollInput.classList.remove('bg-gray-100/80', 'dark:bg-white/5', 'cursor-not-allowed');
+  }
+  if (lockBadge) lockBadge.classList.add('hidden');
+
+  if (currentStudentUser) {
+    if (nameInput) nameInput.value = currentStudentUser.name || '';
+    if (emailInput) emailInput.value = currentStudentUser.email || '';
+  }
+
+  if (existingResumeNotice) existingResumeNotice.classList.add('hidden');
+  if (resumeRequiredStar) resumeRequiredStar.classList.remove('hidden');
+  if (resumeOptionalNotice) resumeOptionalNotice.classList.add('hidden');
+
+  if (submitBtn) {
+    submitBtn.innerHTML = `
+      <i data-lucide="check" class="w-4 h-4"></i>
+      <span>Save & Upload Resume</span>
+    `;
+    submitBtn.className = 'w-full py-3.5 px-6 rounded-2xl bg-apple-blue hover:bg-apple-hover active:scale-[0.99] text-white font-semibold text-sm transition-all shadow-lg shadow-apple-blue/25 flex items-center justify-center gap-2';
+  }
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function previewCurrentStudentResume() {
+  if (currentExistingProfile && currentExistingProfile.rollNumber) {
+    previewResume(
+      currentExistingProfile.rollNumber,
+      encodeURIComponent(currentExistingProfile.name || 'Student Resume'),
+      encodeURIComponent(currentExistingProfile.department || 'Engineering')
+    );
+  } else {
+    showToast('No active resume found to preview.', 'info');
+  }
+}
+
+function signOutStudent() {
+  currentStudentUser = null;
+  currentExistingProfile = null;
+  localStorage.removeItem('resume_student_user');
+
+  const authGate = document.getElementById('studentAuthGate');
+  const formWrapper = document.getElementById('studentFormWrapper');
+  const statusBanner = document.getElementById('profileStatusBanner');
+  if (authGate) authGate.classList.remove('hidden');
+  if (formWrapper) formWrapper.classList.add('hidden');
+  if (statusBanner) statusBanner.classList.add('hidden');
+
+  clearRegistrationForm();
+  resetFormToNewStudentState();
+  setupGoogleButton();
+  showToast('Signed out of Google student session.', 'info');
   if (window.lucide) window.lucide.createIcons();
 }
 
@@ -159,6 +529,9 @@ function switchTab(tab) {
     registerBtn.classList.remove('text-gray-600', 'dark:text-neutral-400');
     searchBtn.classList.remove('active');
     searchBtn.classList.add('text-gray-600', 'dark:text-neutral-400');
+    if (!currentStudentUser) {
+      setupGoogleButton();
+    }
   }
   if (window.lucide) window.lucide.createIcons();
 }
@@ -376,7 +749,10 @@ function renderCandidates(candidates, searchType, queryText) {
             </div>
 
             <!-- Email & Details -->
-            ${c.email ? `<p class="text-xs text-gray-500 dark:text-neutral-400 mb-3 flex items-center gap-1.5"><i data-lucide="mail" class="w-3.5 h-3.5 text-gray-400 dark:text-neutral-500"></i> ${c.email}</p>` : ''}
+            <div class="space-y-1 mb-3">
+              ${c.email ? `<p class="text-xs text-gray-500 dark:text-neutral-400 flex items-center gap-1.5"><i data-lucide="mail" class="w-3.5 h-3.5 text-gray-400 dark:text-neutral-500 shrink-0"></i> <span class="truncate">${c.email}</span></p>` : ''}
+              ${c.gkvEmail && c.gkvEmail !== c.email ? `<p class="text-xs text-gray-500 dark:text-neutral-400 flex items-center gap-1.5"><i data-lucide="building-2" class="w-3.5 h-3.5 text-gray-400 dark:text-neutral-500 shrink-0"></i> <span class="font-mono text-[11px] truncate">${c.gkvEmail}</span></p>` : ''}
+            </div>
 
             <!-- Skill Tags -->
             <div class="space-y-1.5 mb-5">
@@ -570,10 +946,19 @@ function clearSelectedFile(e) {
 async function handleCandidateSubmit(e) {
   e.preventDefault();
 
+  if (!currentStudentUser) {
+    showToast('Please sign in with Google to submit or update your profile.', 'error');
+    const authGate = document.getElementById('studentAuthGate');
+    if (authGate) authGate.scrollIntoView({ behavior: 'smooth' });
+    return;
+  }
+
   const rollNumber = document.getElementById('formRollNumber').value.trim();
   const name = document.getElementById('formName').value.trim();
   const email = document.getElementById('formEmail').value.trim();
+  const gkvEmail = document.getElementById('formGkvEmail').value.trim();
   const department = document.getElementById('formDepartment').value.trim();
+  const phone = document.getElementById('formPhone').value.trim();
   const submitBtn = document.getElementById('submitCandidateBtn');
 
   if (!rollNumber) {
@@ -586,12 +971,18 @@ async function handleCandidateSubmit(e) {
     return;
   }
 
+  if (!gkvEmail) {
+    showToast('Please enter your official GKV Mail (e.g. 21cs101@gkv.ac.in)', 'error');
+    document.getElementById('formGkvEmail').focus();
+    return;
+  }
+
   if (currentSkillsInput.length === 0) {
     showToast('Please add at least one skill tag', 'error');
     return;
   }
 
-  const candidateExists = currentCandidates.some(c => c.rollNumber === rollNumber);
+  const candidateExists = currentExistingProfile !== null || currentCandidates.some(c => c.rollNumber === rollNumber);
   if (!selectedFile && !candidateExists) {
     showToast('Please attach candidate PDF resume', 'error');
     return;
@@ -600,8 +991,13 @@ async function handleCandidateSubmit(e) {
   const formData = new FormData();
   formData.append('rollNumber', rollNumber);
   formData.append('name', name);
-  formData.append('email', email);
+  formData.append('email', email || currentStudentUser.email || '');
+  formData.append('gkvEmail', gkvEmail);
   formData.append('department', department || 'General');
+  formData.append('phone', phone);
+  formData.append('googleId', currentStudentUser.googleId || '');
+  formData.append('googlePicture', currentStudentUser.picture || '');
+  formData.append('googleToken', currentStudentUser.token || '');
   formData.append('skills', JSON.stringify(currentSkillsInput));
   if (selectedFile) {
     formData.append('resume', selectedFile);
@@ -609,7 +1005,7 @@ async function handleCandidateSubmit(e) {
 
   try {
     submitBtn.disabled = true;
-    submitBtn.innerHTML = `<span>Saving...</span>`;
+    submitBtn.innerHTML = `<span>Saving profile...</span>`;
 
     const res = await fetch('/api/candidates', {
       method: 'POST',
@@ -620,12 +1016,9 @@ async function handleCandidateSubmit(e) {
 
     if (data.success) {
       showToast(data.message || `Student ${name} (${rollNumber}) saved successfully!`, 'success');
-      document.getElementById('candidateForm').reset();
-      currentSkillsInput = [];
-      renderSkillsTags();
       clearSelectedFile();
-      clearRegistrationAutoFill();
       await loadQuickSkills();
+      await checkMyProfileInDatabase(false);
       switchTab('search');
       loadAllCandidates();
     } else {
@@ -636,16 +1029,23 @@ async function handleCandidateSubmit(e) {
     showToast('Server error while saving candidate.', 'error');
   } finally {
     submitBtn.disabled = false;
-    submitBtn.innerHTML = `
-      <i data-lucide="check" class="w-4 h-4"></i>
-      <span>Save & Upload Resume</span>
-    `;
+    if (currentExistingProfile) {
+      submitBtn.innerHTML = `
+        <i data-lucide="save" class="w-4 h-4"></i>
+        <span>Update Profile & Save Changes</span>
+      `;
+    } else {
+      submitBtn.innerHTML = `
+        <i data-lucide="check" class="w-4 h-4"></i>
+        <span>Save & Upload Resume</span>
+      `;
+    }
     if (window.lucide) window.lucide.createIcons();
   }
 }
 
 // -------------------------------------------------------------
-// SMART ROLL NUMBER DETECTION & AUTO-FILL
+// SMART ROLL NUMBER DETECTION & ANTI-SPOOFING
 // -------------------------------------------------------------
 function setupRollNumberDetection() {
   const rollInput = document.getElementById('formRollNumber');
@@ -653,6 +1053,9 @@ function setupRollNumberDetection() {
 
   let debounceTimer = null;
   rollInput.addEventListener('input', () => {
+    // If the input is readOnly (locked for existing verified student), do nothing
+    if (rollInput.readOnly) return;
+
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(async () => {
       const roll = rollInput.value.trim().toUpperCase();
@@ -670,34 +1073,55 @@ function setupRollNumberDetection() {
         } catch (_) {}
       }
 
+      const submitBtn = document.getElementById('submitCandidateBtn');
+      const statusBanner = document.getElementById('profileStatusBanner');
+      const bannerIcon = document.getElementById('profileStatusBannerIcon');
+      const bannerText = document.getElementById('profileStatusBannerText');
+
       if (candidate) {
-        const banner = document.getElementById('existingCandidateBanner');
-        const nameEl = document.getElementById('detectedCandidateName');
-        const submitBtn = document.getElementById('submitCandidateBtn');
-        const nameInput = document.getElementById('formName');
-        const emailInput = document.getElementById('formEmail');
-        const deptInput = document.getElementById('formDepartment');
+        // Ownership check: does this existing candidate belong to the currently logged in student?
+        const isOwner = currentStudentUser && (
+          (candidate.googleId && candidate.googleId === currentStudentUser.googleId) ||
+          (!candidate.googleId && candidate.email && candidate.email.toLowerCase() === (currentStudentUser.email || '').toLowerCase()) ||
+          (!candidate.googleId && candidate.gkvEmail && candidate.gkvEmail.toLowerCase() === (document.getElementById('formGkvEmail').value || '').trim().toLowerCase())
+        );
 
-        if (banner) banner.classList.remove('hidden');
-        if (nameEl) nameEl.textContent = `${candidate.name} (${candidate.rollNumber})`;
-
-        if (!nameInput.value) nameInput.value = candidate.name;
-        if (!emailInput.value && candidate.email) emailInput.value = candidate.email;
-        if (!deptInput.value && candidate.department) deptInput.value = candidate.department;
-
-        if (currentSkillsInput.length === 0 && candidate.skills && candidate.skills.length > 0) {
-          currentSkillsInput = [...candidate.skills];
-          renderSkillsTags();
+        if (!isOwner) {
+          // Warning: Someone else's roll number!
+          if (statusBanner && bannerIcon && bannerText) {
+            statusBanner.className = 'p-3.5 sm:p-4 rounded-2xl text-xs flex items-start justify-between gap-3 transition-all bg-rose-500/10 dark:bg-rose-500/15 border border-rose-500/30 text-rose-800 dark:text-rose-200';
+            bannerIcon.innerHTML = `<i data-lucide="shield-alert" class="w-4 h-4 text-rose-600 dark:text-rose-400"></i>`;
+            bannerText.innerHTML = `
+              <div>
+                <span class="font-bold text-sm text-rose-800 dark:text-rose-200">Roll Number Already Registered (${roll})</span>
+                <p class="text-rose-700/90 dark:text-rose-300/90 mt-0.5">
+                  This Roll Number belongs to another student. You cannot view, edit, or overwrite other students' profiles.
+                </p>
+              </div>
+            `;
+            statusBanner.classList.remove('hidden');
+          }
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          }
+          if (window.lucide) window.lucide.createIcons();
+          return;
+        } else {
+          // This is the student's own profile!
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          }
+          currentExistingProfile = candidate;
+          populateStudentForm(candidate);
         }
-
-        if (submitBtn) {
-          submitBtn.innerHTML = `
-            <i data-lucide="edit-3" class="w-4 h-4"></i>
-            <span>Update Student & Replace Resume</span>
-          `;
-        }
-        if (window.lucide) window.lucide.createIcons();
       } else {
+        // Roll number is free and available
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
         clearRegistrationAutoFill();
       }
     }, 250);
@@ -705,14 +1129,13 @@ function setupRollNumberDetection() {
 }
 
 function clearRegistrationAutoFill() {
-  const banner = document.getElementById('existingCandidateBanner');
   const submitBtn = document.getElementById('submitCandidateBtn');
-  if (banner) banner.classList.add('hidden');
-  if (submitBtn) {
+  if (submitBtn && !currentExistingProfile) {
     submitBtn.innerHTML = `
       <i data-lucide="check" class="w-4 h-4"></i>
       <span>Save & Upload Resume</span>
     `;
+    submitBtn.className = 'w-full py-3.5 px-6 rounded-2xl bg-apple-blue hover:bg-apple-hover active:scale-[0.99] text-white font-semibold text-sm transition-all shadow-lg shadow-apple-blue/25 flex items-center justify-center gap-2';
     if (window.lucide) window.lucide.createIcons();
   }
 }
@@ -722,7 +1145,12 @@ function clearRegistrationForm() {
   currentSkillsInput = [];
   renderSkillsTags();
   clearSelectedFile();
-  clearRegistrationAutoFill();
+  if (currentExistingProfile) {
+    populateStudentForm(currentExistingProfile);
+  } else {
+    clearRegistrationAutoFill();
+    resetFormToNewStudentState();
+  }
 }
 
 // -------------------------------------------------------------

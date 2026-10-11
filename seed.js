@@ -1190,6 +1190,7 @@ async function seed() {
           rollNumber: data.rollNumber,
           name: data.name,
           email: data.email,
+          gkvEmail: `${data.rollNumber.toLowerCase()}@gkv.ac.in`,
           phone: data.phone,
           department: data.department,
           skills: data.skills,

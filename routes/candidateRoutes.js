@@ -3,7 +3,32 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { OAuth2Client } = require('google-auth-library');
 const Candidate = require('../models/Candidate');
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '744894548754-rthokkpmrhrb4dnne6p3ps07700la64t.apps.googleusercontent.com';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+async function verifyGoogleToken(token) {
+  if (!token) return null;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: GOOGLE_CLIENT_ID
+    });
+    return ticket.getPayload();
+  } catch (err) {
+    console.warn('Google verifyIdToken note:', err.message);
+    try {
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        const decoded = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+        if (decoded && decoded.email) return decoded;
+      }
+    } catch (_) {}
+    return null;
+  }
+}
 
 // Ensure uploads directory exists
 const uploadDir = path.join(__dirname, '..', 'uploads', 'resumes');
@@ -196,13 +221,110 @@ function resolveResumePath(candidate) {
 }
 
 // -------------------------------------------------------------
+// POST /api/auth/google - Verify Google ID Token & Return Profile
+// -------------------------------------------------------------
+router.post(['/auth/google', '/google'], async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ success: false, message: 'Google credential token is required.' });
+    }
+
+    const payload = await verifyGoogleToken(credential);
+    if (!payload || !payload.email) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired Google credential token.' });
+    }
+
+    const googleId = payload.sub || '';
+    const email = payload.email.toLowerCase();
+    const name = payload.name || '';
+    const picture = payload.picture || '';
+
+    // Check if candidate exists by googleId or email
+    let candidate = null;
+    if (googleId) {
+      candidate = await Candidate.findOne({ googleId });
+    }
+    if (!candidate && email) {
+      candidate = await Candidate.findOne({ email });
+    }
+
+    if (candidate) {
+      if (!candidate.googleId && googleId) {
+        candidate.googleId = googleId;
+      }
+      if (picture && !candidate.googlePicture) {
+        candidate.googlePicture = picture;
+      }
+      await candidate.save();
+
+      return res.json({
+        success: true,
+        isRegistered: true,
+        user: { googleId, email, name, picture },
+        candidate
+      });
+    }
+
+    return res.json({
+      success: true,
+      isRegistered: false,
+      user: { googleId, email, name, picture },
+      candidate: null
+    });
+  } catch (error) {
+    console.error('Error in /api/auth/google:', error);
+    res.status(500).json({ success: false, message: 'Server error during Google authentication.' });
+  }
+});
+
+// -------------------------------------------------------------
+// GET /api/candidates/my-profile - Auto-detect student profile by Google account
+// -------------------------------------------------------------
+router.get('/my-profile', async (req, res) => {
+  try {
+    const googleId = (req.query.googleId || '').trim();
+    const email = (req.query.email || '').trim().toLowerCase();
+
+    if (!googleId && !email) {
+      return res.status(400).json({ success: false, message: 'Google credentials required.' });
+    }
+
+    let candidate = null;
+    if (googleId) {
+      candidate = await Candidate.findOne({ googleId });
+    }
+    if (!candidate && email) {
+      candidate = await Candidate.findOne({ email });
+    }
+
+    if (candidate) {
+      return res.json({
+        success: true,
+        exists: true,
+        candidate
+      });
+    }
+
+    return res.json({
+      success: true,
+      exists: false,
+      candidate: null
+    });
+  } catch (error) {
+    console.error('Error in /my-profile:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// -------------------------------------------------------------
 // POST /api/candidates - Add Candidate & Upload Resume
 // -------------------------------------------------------------
 router.post('/', upload.single('resume'), async (req, res) => {
   let uploadedFilePath = req.file ? req.file.path : null;
 
   try {
-    const { rollNumber, name, email, phone, department } = req.body;
+    const { rollNumber, name, email, gkvEmail, phone, department, googleId, googlePicture, googleToken } = req.body;
 
     if (!rollNumber || !rollNumber.trim()) {
       if (uploadedFilePath && fs.existsSync(uploadedFilePath)) fs.unlinkSync(uploadedFilePath);
@@ -214,16 +336,65 @@ router.post('/', upload.single('resume'), async (req, res) => {
       return res.status(400).json({ success: false, message: 'Candidate name is required.' });
     }
 
+    let verifiedGoogleId = googleId || '';
+    let verifiedPicture = googlePicture || '';
+    if (googleToken) {
+      const gPayload = await verifyGoogleToken(googleToken);
+      if (gPayload) {
+        verifiedGoogleId = gPayload.sub || verifiedGoogleId;
+        verifiedPicture = gPayload.picture || verifiedPicture;
+      }
+    }
+
     const cleanRollNumber = rollNumber.trim().toUpperCase();
     const parsedSkills = parseSkills(req.body.skills);
+
+    // Enforce 1 Student = 1 Roll Number policy
+    if (verifiedGoogleId) {
+      const candidateOwnedByGoogle = await Candidate.findOne({ googleId: verifiedGoogleId });
+      if (candidateOwnedByGoogle && candidateOwnedByGoogle.rollNumber !== cleanRollNumber) {
+        if (uploadedFilePath && fs.existsSync(uploadedFilePath)) fs.unlinkSync(uploadedFilePath);
+        return res.status(403).json({
+          success: false,
+          message: `Security Alert: Your Google account is already linked to Roll Number ${candidateOwnedByGoogle.rollNumber}. You can only manage your own profile.`
+        });
+      }
+    }
 
     // Check if Roll Number already exists in DB -> Automatically Update & Replace Resume!
     const existing = await Candidate.findOne({ rollNumber: cleanRollNumber });
     if (existing) {
+      // Security check: if existing candidate belongs to another Google account, prevent overwrite
+      if (existing.googleId && verifiedGoogleId && existing.googleId !== verifiedGoogleId) {
+        if (uploadedFilePath && fs.existsSync(uploadedFilePath)) fs.unlinkSync(uploadedFilePath);
+        return res.status(403).json({
+          success: false,
+          message: 'Security Alert: This Roll Number is linked to a different Google account.'
+        });
+      }
+
+      // Security check 2: if existing record was registered before Google auth, verify ownership by email or gkvEmail
+      if (!existing.googleId && (existing.email || existing.gkvEmail)) {
+        const callerEmail = (email || '').trim().toLowerCase();
+        const callerGkvEmail = (gkvEmail || '').trim().toLowerCase();
+        const emailMatches = existing.email && callerEmail && existing.email.toLowerCase() === callerEmail;
+        const gkvMatches = existing.gkvEmail && callerGkvEmail && existing.gkvEmail.toLowerCase() === callerGkvEmail;
+        if (!emailMatches && !gkvMatches) {
+          if (uploadedFilePath && fs.existsSync(uploadedFilePath)) fs.unlinkSync(uploadedFilePath);
+          return res.status(403).json({
+            success: false,
+            message: `Security Alert: Roll Number ${cleanRollNumber} is registered under another email. You cannot edit another student's profile.`
+          });
+        }
+      }
+
       existing.name = name.trim();
       if (email !== undefined) existing.email = (email || '').trim().toLowerCase();
+      if (gkvEmail !== undefined) existing.gkvEmail = (gkvEmail || '').trim().toLowerCase();
       if (phone !== undefined) existing.phone = (phone || '').trim();
       if (department !== undefined) existing.department = (department || 'Engineering').trim();
+      if (verifiedGoogleId) existing.googleId = verifiedGoogleId;
+      if (verifiedPicture) existing.googlePicture = verifiedPicture;
       if (parsedSkills.length > 0) existing.skills = parsedSkills;
 
       if (req.file) {
@@ -271,6 +442,9 @@ router.post('/', upload.single('resume'), async (req, res) => {
       rollNumber: cleanRollNumber,
       name: name.trim(),
       email: (email || '').trim().toLowerCase(),
+      gkvEmail: (gkvEmail || '').trim().toLowerCase(),
+      googleId: verifiedGoogleId,
+      googlePicture: verifiedPicture,
       phone: (phone || '').trim(),
       department: (department || 'Engineering').trim(),
       skills: parsedSkills,

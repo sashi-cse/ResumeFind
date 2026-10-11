@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>ResumeFinder • Placement & Talent Portal</title>
   
-  <!-- Early Dark Mode Detection to prevent flash of wrong theme -->
+  <!-- Early Theme Detection (Default Light Mode like live site) -->
   <script>
-    if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    if (localStorage.getItem('theme_v2') !== 'set') {
+      localStorage.removeItem('theme');
+      localStorage.setItem('theme_v2', 'set');
+    }
+    if (localStorage.getItem('theme') === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
@@ -48,8 +52,10 @@
           }
         }
       }
-    }
+    };
   </script>
+  <!-- Google Identity Services (Sign In with Google) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body class="bg-[#F5F5F7] dark:bg-[#000000] text-apple-dark dark:text-neutral-100 font-sans min-h-screen antialiased selection:bg-apple-blue selection:text-white transition-colors duration-200">
 
@@ -192,71 +198,174 @@
     </section>
 
     <!-- ======================================================== -->
-    <!-- VIEW 2: REGISTER / ADD CANDIDATE -->
+    <!-- VIEW 2: REGISTER / ADD CANDIDATE (STUDENT PORTAL) -->
     <!-- ======================================================== -->
-    <section id="registerSection" class="hidden max-w-2xl mx-auto">
-      <div class="ios-card rounded-3xl p-6 sm:p-8 border shadow-ios-elevated space-y-6">
-        
-        <div>
-          <h2 class="text-xl font-bold tracking-tight text-apple-dark dark:text-white">Add Student Candidate</h2>
-          <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Register candidate details and attach their PDF resume linked to their Roll Number.</p>
+    <section id="registerSection" class="hidden max-w-2xl mx-auto space-y-6">
+
+      <!-- AUTH GATE: SHOWN WHEN STUDENT IS NOT SIGNED IN WITH GOOGLE -->
+      <div id="studentAuthGate" class="ios-card rounded-3xl p-8 sm:p-10 border shadow-ios-elevated text-center space-y-6">
+        <div class="w-16 h-16 rounded-3xl bg-apple-blue/10 dark:bg-apple-blue/20 text-apple-blue mx-auto flex items-center justify-center shadow-inner">
+          <i data-lucide="shield-check" class="w-8 h-8"></i>
         </div>
 
-        <!-- Smart Update / Existing Student Banner -->
-        <div id="existingCandidateBanner" class="hidden p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300 flex items-center justify-between text-xs">
+        <div class="max-w-md mx-auto">
+          <h2 class="text-2xl font-bold tracking-tight text-apple-dark dark:text-white">Student Verification</h2>
+          <p class="text-sm text-gray-500 dark:text-neutral-400 mt-2">
+            Please sign in with your Google account to create your candidate profile or update your resume.
+          </p>
+        </div>
+
+        <div class="max-w-sm mx-auto p-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-gray-200/80 dark:border-white/10 text-xs text-left space-y-2 text-gray-600 dark:text-neutral-300">
           <div class="flex items-center gap-2">
-            <i data-lucide="info" class="w-4 h-4 shrink-0 text-amber-500"></i>
-            <span>Existing student detected (<strong id="detectedCandidateName">Roushan</strong>). Submitting will <strong>update their profile and replace their resume</strong>.</span>
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 shrink-0"></i>
+            <span>Verifies your student identity & auto-fills your name</span>
           </div>
-          <button type="button" onclick="clearRegistrationForm()" class="text-amber-600 dark:text-amber-400 hover:underline font-semibold text-[11px] shrink-0">Clear Form</button>
+          <div class="flex items-center gap-2">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 shrink-0"></i>
+            <span>Protects your roll number from unauthorized edits</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 shrink-0"></i>
+            <span>Seamlessly update your skills & resume anytime</span>
+          </div>
+        </div>
+
+        <!-- Google Identity Services Sign-In Button Container -->
+        <div class="pt-2 flex flex-col items-center justify-center gap-3">
+          <div id="googleBtnWrapper" class="min-h-[44px] flex items-center justify-center"></div>
+          <p class="text-[11px] text-gray-400 dark:text-neutral-500">Sign in with any Gmail or College Google account</p>
+        </div>
+      </div>
+
+      <!-- FORM CONTAINER: SHOWN ONCE SIGNED IN WITH GOOGLE -->
+      <div id="studentFormWrapper" class="hidden ios-card rounded-3xl p-6 sm:p-8 border shadow-ios-elevated space-y-6">
+        
+        <!-- Authenticated Student Status Header -->
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-5 border-b border-gray-200/70 dark:border-white/10">
+          <div class="flex items-center gap-3.5">
+            <img id="authStudentAvatar" src="https://lh3.googleusercontent.com/a/default-user" alt="Avatar" class="w-12 h-12 rounded-2xl border border-white/20 shadow-sm object-cover bg-gray-200" />
+            <div>
+              <div class="flex items-center gap-2">
+                <h3 id="authStudentName" class="text-base font-bold text-apple-dark dark:text-white leading-tight">Student Name</h3>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <i data-lucide="check" class="w-2.5 h-2.5"></i> Google Verified
+                </span>
+              </div>
+              <p id="authStudentEmail" class="text-xs text-gray-500 dark:text-neutral-400 mt-0.5 font-mono">student@gmail.com</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onclick="signOutStudent()"
+            class="px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-white/10 hover:bg-rose-500 hover:text-white text-apple-dark dark:text-neutral-300 text-xs font-semibold transition flex items-center gap-1.5"
+            title="Sign out of current Google session"
+          >
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            <span>Sign Out</span>
+          </button>
+        </div>
+
+        <div>
+          <h2 class="text-xl font-bold tracking-tight text-apple-dark dark:text-white">Student Resume & Profile Details</h2>
+          <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Manage your candidate profile, update your skillset, or upload your official resume PDF.</p>
+        </div>
+
+        <!-- Database Profile Verification Status Bar -->
+        <div class="p-3.5 sm:p-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-gray-200/80 dark:border-white/10 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div id="dbStatusIconWrapper" class="w-9 h-9 rounded-xl bg-apple-blue/10 dark:bg-apple-blue/20 text-apple-blue flex items-center justify-center shrink-0">
+              <i data-lucide="database" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span id="dbStatusBadge" class="text-xs font-bold text-apple-dark dark:text-white">Profile Database Status</span>
+                <span id="profileTypeTag" class="hidden text-[10px] font-bold px-2 py-0.5 rounded-full"></span>
+              </div>
+              <p id="dbStatusDescription" class="text-[11px] text-gray-500 dark:text-neutral-400 mt-0.5">Checking database for your records...</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            id="btnCheckDbProfile"
+            onclick="checkMyProfileInDatabase(true)"
+            class="px-3.5 py-1.5 rounded-xl bg-white dark:bg-white/10 hover:bg-gray-100 dark:hover:bg-white/20 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-neutral-200 text-xs font-semibold shadow-sm transition flex items-center gap-1.5 active:scale-95"
+            title="Check database for existing records"
+          >
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <span>Check Database</span>
+          </button>
+        </div>
+
+        <!-- Dynamic Profile Status Banner (Green for Existing / Blue for New) -->
+        <div id="profileStatusBanner" class="hidden p-3.5 sm:p-4 rounded-2xl text-xs flex items-start justify-between gap-3 transition-all">
+          <div class="flex items-start gap-2.5">
+            <div id="profileStatusBannerIcon" class="mt-0.5 shrink-0">
+              <i data-lucide="info" class="w-4 h-4"></i>
+            </div>
+            <div id="profileStatusBannerText" class="space-y-1">
+              <!-- Content injected via JS -->
+            </div>
+          </div>
+          <button type="button" onclick="clearRegistrationForm()" id="btnResetInputs" class="text-[11px] font-semibold hover:underline shrink-0 hidden">
+            Clear Inputs
+          </button>
         </div>
 
         <form id="candidateForm" onsubmit="handleCandidateSubmit(event)" class="space-y-5">
-          <!-- Roll Number (Unique Key) -->
-          <div>
-            <label for="formRollNumber" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
-              Roll Number <span class="text-rose-500">* (Unique Identifier)</span>
-            </label>
-            <div class="relative">
-              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
-                <i data-lucide="hash" class="w-4 h-4"></i>
-              </span>
-              <input
-                type="text"
-                id="formRollNumber"
-                required
-                placeholder="e.g. 21CS042"
-                autocomplete="off"
-                oninput="this.value = this.value.toUpperCase()"
-                class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white font-mono text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
-              />
-            </div>
-          </div>
-
-          <!-- Full Name -->
-          <div>
-            <label for="formName" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
-              Full Name <span class="text-rose-500">*</span>
-            </label>
-            <div class="relative">
-              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
-                <i data-lucide="user" class="w-4 h-4"></i>
-              </span>
-              <input
-                type="text"
-                id="formName"
-                required
-                placeholder="e.g. Rahul Sharma"
-                class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
-              />
-            </div>
-          </div>
-
-          <!-- Contact Details (2 Columns) -->
+          
+          <!-- Row 1: Roll Number & Full Name -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Roll Number (Unique Key) -->
+            <div>
+              <label for="formRollNumber" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5 flex items-center justify-between">
+                <span>Roll Number <span class="text-rose-500">* (Unique ID)</span></span>
+                <span id="rollNumberLockBadge" class="hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <i data-lucide="lock" class="w-2.5 h-2.5"></i> Verified Identity
+                </span>
+              </label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
+                  <i data-lucide="hash" class="w-4 h-4"></i>
+                </span>
+                <input
+                  type="text"
+                  id="formRollNumber"
+                  required
+                  placeholder="e.g. 21CS042"
+                  autocomplete="off"
+                  oninput="this.value = this.value.toUpperCase()"
+                  class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white font-mono text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <!-- Full Name (Auto-filled from Google) -->
+            <div>
+              <label for="formName" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
+                Full Name <span class="text-rose-500">*</span>
+              </label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
+                  <i data-lucide="user" class="w-4 h-4"></i>
+                </span>
+                <input
+                  type="text"
+                  id="formName"
+                  required
+                  placeholder="e.g. Rahul Sharma"
+                  class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2: Google Email & GKV Mail -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- Google Email -->
             <div>
               <label for="formEmail" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
-                Email Address
+                Google / Personal Email
               </label>
               <div class="relative">
                 <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
@@ -265,14 +374,38 @@
                 <input
                   type="email"
                   id="formEmail"
-                  placeholder="rahul@college.edu"
+                  placeholder="student@gmail.com"
                   class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
                 />
               </div>
             </div>
+
+            <!-- GKV Mail (College Institutional Email) -->
+            <div>
+              <label for="formGkvEmail" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5 flex items-center justify-between">
+                <span>GKV Mail <span class="text-rose-500">*</span></span>
+                <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">Official College</span>
+              </label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-emerald-600 dark:text-emerald-400">
+                  <i data-lucide="building-2" class="w-4 h-4"></i>
+                </span>
+                <input
+                  type="email"
+                  id="formGkvEmail"
+                  required
+                  placeholder="e.g. 21cs101@gkv.ac.in"
+                  class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-emerald-500/30 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: Department & Phone -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label for="formDepartment" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
-                Department / Branch
+                Department / Branch <span class="text-rose-500">*</span>
               </label>
               <div class="relative">
                 <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
@@ -281,7 +414,25 @@
                 <input
                   type="text"
                   id="formDepartment"
+                  required
                   placeholder="e.g. Computer Science"
+                  class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label for="formPhone" class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
+                Phone Number
+              </label>
+              <div class="relative">
+                <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-gray-400 dark:text-neutral-500">
+                  <i data-lucide="phone" class="w-4 h-4"></i>
+                </span>
+                <input
+                  type="tel"
+                  id="formPhone"
+                  placeholder="+91 98765 43210"
                   class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-gray-50 dark:bg-[#2C2C2E]/60 border border-gray-200 dark:border-white/10 text-apple-dark dark:text-white text-sm focus:bg-white dark:focus:bg-[#2C2C2E] focus:border-apple-blue focus:ring-2 focus:ring-apple-blue/20 outline-none transition"
                 />
               </div>
@@ -307,9 +458,28 @@
 
           <!-- Resume PDF Upload Dropzone -->
           <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5">
-              Resume Document <span class="text-rose-500">* (PDF Only)</span>
+            <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-neutral-400 mb-1.5 flex items-center justify-between">
+              <span>Resume Document <span id="resumeRequiredStar" class="text-rose-500">* (PDF Only)</span></span>
+              <span id="resumeOptionalNotice" class="hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                Optional on Update
+              </span>
             </label>
+
+            <!-- Active Resume Notice for Existing Profile -->
+            <div id="existingResumeNotice" class="hidden mb-2.5 p-3 rounded-2xl bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300">
+              <div class="flex items-center gap-2.5">
+                <i data-lucide="file-check" class="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0"></i>
+                <div>
+                  <span class="font-medium">Active Resume on File: </span>
+                  <span id="existingResumeFileName" class="font-mono font-bold">Current_Resume.pdf</span>
+                  <span class="block text-[11px] text-emerald-700/80 dark:text-emerald-400/80">Keep this active, or drop a new PDF below to replace it.</span>
+                </div>
+              </div>
+              <button type="button" onclick="previewCurrentStudentResume()" class="px-2.5 py-1 rounded-xl bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-800 dark:text-emerald-200 font-semibold text-[11px] transition shrink-0 flex items-center gap-1">
+                <i data-lucide="eye" class="w-3 h-3"></i> View Active
+              </button>
+            </div>
+
             <div
               id="dropzone"
               onclick="document.getElementById('formResumeFile').click()"
