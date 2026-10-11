@@ -32,11 +32,6 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// API Routes
-app.use('/api/candidates', candidateRoutes);
-app.use('/api/auth', candidateRoutes);
-app.use('/api', candidateRoutes);
-
 // Health & Status route
 app.get('/api/health', (req, res) => {
   res.json({
@@ -46,6 +41,11 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date()
   });
 });
+
+// API Routes
+app.use('/api/candidates', candidateRoutes);
+app.use('/api/auth', candidateRoutes);
+app.use('/api', candidateRoutes);
 
 // Fallback to index.html for SPA-like navigation
 app.get('*', (req, res) => {
