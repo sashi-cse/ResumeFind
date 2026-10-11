@@ -71,6 +71,13 @@ const CandidateSchema = new mongoose.Schema(
     fileSize: {
       type: Number,
       default: 0
+    },
+    resumeData: {
+      type: Buffer
+    },
+    resumeContentType: {
+      type: String,
+      default: 'application/pdf'
     }
   },
   {
@@ -78,9 +85,10 @@ const CandidateSchema = new mongoose.Schema(
   }
 );
 
-// Helper method to format candidate for API responses
+// Helper method to format candidate for API responses (exclude large binary buffer from JSON lists)
 CandidateSchema.methods.toJSON = function () {
   const obj = this.toObject();
+  delete obj.resumeData;
   return obj;
 };
 
