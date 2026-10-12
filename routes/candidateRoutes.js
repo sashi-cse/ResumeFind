@@ -680,6 +680,9 @@ router.get('/:rollNumber/preview', async (req, res) => {
       } catch (_) {}
 
       const originalName = candidate.resumeOriginalName || candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`;
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.setHeader('Content-Type', candidate.resumeContentType || 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${originalName}"`);
       return res.send(candidate.resumeData);
@@ -689,6 +692,9 @@ router.get('/:rollNumber/preview', async (req, res) => {
     const filePath = resolveResumePath(candidate);
     if (filePath && fs.existsSync(filePath)) {
       const originalName = candidate.resumeOriginalName || candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`;
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${originalName}"`);
       return fs.createReadStream(filePath).pipe(res);
@@ -740,6 +746,9 @@ router.get('/:rollNumber/download', async (req, res) => {
         fs.writeFileSync(localTarget, candidate.resumeData);
       } catch (_) {}
 
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.setHeader('Content-Type', candidate.resumeContentType || 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
       return res.send(candidate.resumeData);
@@ -748,6 +757,9 @@ router.get('/:rollNumber/download', async (req, res) => {
     // 2. If file exists on host disk, download it directly
     const filePath = resolveResumePath(candidate);
     if (filePath && fs.existsSync(filePath)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       return res.download(filePath, downloadName, err => {
         if (err && !res.headersSent) {
           res.status(500).json({ success: false, message: 'Error initiating file download.' });

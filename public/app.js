@@ -809,12 +809,20 @@ function previewResume(rollNumber, encodedName, encodedDept) {
   rollEl.textContent = rollNumber;
   deptEl.textContent = decodeURIComponent(encodedDept) || 'Engineering';
 
+  const previewUrl = `/api/candidates/${rollNumber}/preview?_t=${Date.now()}`;
+  const downloadUrl = `/api/candidates/${rollNumber}/download?_t=${Date.now()}`;
+
   downloadBtn.onclick = () => {
-    window.location.href = `/api/candidates/${rollNumber}/download`;
+    window.location.href = downloadUrl;
   };
 
+  const openTabBtn = document.getElementById('modalOpenTabBtn');
+  if (openTabBtn) {
+    openTabBtn.href = previewUrl;
+  }
+
   loading.classList.remove('hidden');
-  iframe.src = `/api/candidates/${rollNumber}/preview`;
+  iframe.src = previewUrl;
   iframe.onload = () => {
     loading.classList.add('hidden');
   };
