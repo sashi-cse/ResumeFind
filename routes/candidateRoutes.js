@@ -5,7 +5,6 @@ const path = require('path');
 const fs = require('fs');
 const { OAuth2Client } = require('google-auth-library');
 const Candidate = require('../models/Candidate');
-const { generateResumePdf } = require('../utils/pdfHelper');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '744894548754-rthokkpmrhrb4dnne6p3ps07700la64t.apps.googleusercontent.com';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
@@ -673,41 +672,46 @@ router.get('/:rollNumber/preview', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Candidate not found.' });
     }
 
-    // 1. If file exists on host disk, stream it directly
-    const filePath = resolveResumePath(candidate);
-    if (filePath && fs.existsSync(filePath)) {
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`}"`);
-      return fs.createReadStream(filePath).pipe(res);
-    }
-
-    // 2. If stored in MongoDB Atlas, stream from database buffer and re-cache to disk
+    // 1. If stored in MongoDB Atlas, stream from database buffer and re-cache to disk
     if (candidate.resumeData && candidate.resumeData.length > 0) {
       try {
         const localTarget = path.join(uploadDir, candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`);
         fs.writeFileSync(localTarget, candidate.resumeData);
       } catch (_) {}
 
+      const originalName = candidate.resumeOriginalName || candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`;
       res.setHeader('Content-Type', candidate.resumeContentType || 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`}"`);
+      res.setHeader('Content-Disposition', `inline; filename="${originalName}"`);
       return res.send(candidate.resumeData);
     }
 
-    // 3. Fallback: Dynamically generate verified official PDF resume, save to MongoDB, and stream
-    const generatedBuffer = await generateResumePdf(candidate);
-    candidate.resumeData = generatedBuffer;
-    candidate.resumeContentType = 'application/pdf';
-    candidate.fileSize = generatedBuffer.length;
-    await candidate.save().catch(err => console.warn('Could not cache generated PDF to candidate:', err));
+    // 2. If file exists on host disk, stream it directly
+    const filePath = resolveResumePath(candidate);
+    if (filePath && fs.existsSync(filePath)) {
+      const originalName = candidate.resumeOriginalName || candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${originalName}"`);
+      return fs.createReadStream(filePath).pipe(res);
+    }
 
-    try {
-      const localTarget = path.join(uploadDir, `${candidate.rollNumber}_Resume.pdf`);
-      fs.writeFileSync(localTarget, generatedBuffer);
-    } catch (_) {}
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${candidate.rollNumber}_Resume.pdf"`);
-    return res.send(generatedBuffer);
+    // 3. If no uploaded file is found, return clean not-found notice (never generate fake PDF)
+    return res.status(404).send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Resume Not Found</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #f8fafc; color: #1e293b;">
+          <div style="text-align: center; padding: 2.5rem; background: white; border-radius: 1.25rem; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05); max-width: 420px; margin: 1rem;">
+            <div style="width: 50px; height: 50px; border-radius: 50%; background: #fee2e2; color: #ef4444; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; font-size: 24px;">📄</div>
+            <h3 style="margin: 0 0 0.5rem; font-size: 1.15rem; font-weight: 700; color: #0f172a;">No Resume Uploaded</h3>
+            <p style="margin: 0; font-size: 0.875rem; color: #64748b; line-height: 1.5;">Candidate <strong>${candidate.name}</strong> (${candidate.rollNumber}) has not uploaded an original PDF resume yet.</p>
+          </div>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error('Error previewing resume:', error);
     res.status(500).json({ success: false, message: 'Failed to preview resume.' });
@@ -727,19 +731,9 @@ router.get('/:rollNumber/download', async (req, res) => {
     }
 
     const safeName = (candidate.name || 'Candidate').replace(/[^a-zA-Z0-9]/g, '_');
-    const downloadName = `${candidate.rollNumber}_${safeName}_Resume.pdf`;
+    const downloadName = candidate.resumeOriginalName || `${candidate.rollNumber}_${safeName}_Resume.pdf`;
 
-    // 1. If file exists on host disk, download it
-    const filePath = resolveResumePath(candidate);
-    if (filePath && fs.existsSync(filePath)) {
-      return res.download(filePath, downloadName, err => {
-        if (err && !res.headersSent) {
-          res.status(500).json({ success: false, message: 'Error initiating file download.' });
-        }
-      });
-    }
-
-    // 2. If stored in MongoDB Atlas, send it from database buffer
+    // 1. If stored in MongoDB Atlas, send exact uploaded binary buffer
     if (candidate.resumeData && candidate.resumeData.length > 0) {
       try {
         const localTarget = path.join(uploadDir, candidate.resumeFileName || `${candidate.rollNumber}_Resume.pdf`);
@@ -751,21 +745,17 @@ router.get('/:rollNumber/download', async (req, res) => {
       return res.send(candidate.resumeData);
     }
 
-    // 3. Fallback: Dynamically generate verified official PDF resume, save to MongoDB, and download
-    const generatedBuffer = await generateResumePdf(candidate);
-    candidate.resumeData = generatedBuffer;
-    candidate.resumeContentType = 'application/pdf';
-    candidate.fileSize = generatedBuffer.length;
-    await candidate.save().catch(err => console.warn('Could not cache generated PDF to candidate:', err));
+    // 2. If file exists on host disk, download it directly
+    const filePath = resolveResumePath(candidate);
+    if (filePath && fs.existsSync(filePath)) {
+      return res.download(filePath, downloadName, err => {
+        if (err && !res.headersSent) {
+          res.status(500).json({ success: false, message: 'Error initiating file download.' });
+        }
+      });
+    }
 
-    try {
-      const localTarget = path.join(uploadDir, `${candidate.rollNumber}_Resume.pdf`);
-      fs.writeFileSync(localTarget, generatedBuffer);
-    } catch (_) {}
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
-    return res.send(generatedBuffer);
+    return res.status(404).json({ success: false, message: 'Original resume PDF file not found for this candidate.' });
   } catch (error) {
     console.error('Error downloading resume:', error);
     res.status(500).json({ success: false, message: 'Failed to download resume.' });

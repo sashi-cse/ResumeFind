@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const Candidate = require('../models/Candidate');
-const { generateResumePdf } = require('../utils/pdfHelper');
 
 const MONGO_URI = process.env.MONGO_URI;
 const uploadDir = path.join(__dirname, '..', 'uploads', 'resumes');
@@ -34,16 +33,10 @@ async function syncAll() {
       }
     }
 
-    // If no file on disk, generate professional official PDF
+    // If no real file on disk, do not overwrite with fake PDF
     if (!buffer) {
-      buffer = await generateResumePdf(c);
-      console.log(`⚡ Generated verified official PDF for ${c.rollNumber} (${c.name}) [${buffer.length} bytes]`);
-      
-      // Also cache to local disk
-      const diskPath = path.join(uploadDir, `${c.rollNumber}_Resume.pdf`);
-      try {
-        fs.writeFileSync(diskPath, buffer);
-      } catch (_) {}
+      console.log(`⚠️ No disk file found for ${c.rollNumber} (${c.name}) - skipping (preserving whatever candidate uploaded)`);
+      continue;
     }
 
     c.resumeData = buffer;
